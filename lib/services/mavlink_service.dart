@@ -1,19 +1,37 @@
-// lib/services/mavlink_service.dart
 import 'dart:async';
+import 'dart:convert';
+import 'dart:io';
 
 class MavlinkService {
-  // MAVLink protokolü ile komut gönderen fonksiyon
-  void sendCommand(String command) {
-    // MAVLink komut gönderme işlemleri burada gerçekleştirilecek.
-    print('MAVLink Komutu Gönderildi: $command');
+  Socket? _socket;
+  StreamController<String> _dataStreamController = StreamController.broadcast();
+  StreamSubscription? _subscription;
+
+  Stream<String> get dataStream => _dataStreamController.stream;
+
+  void connect(String host, int port) async {
+    try {
+      _socket = await Socket.connect(host, port);
+      _subscription = _socket!.listen((data) {
+        _dataStreamController.add(utf8.decode(data));
+      });
+    } catch (e) {
+      _dataStreamController.addError('Connection error: $e');
+    }
   }
 
-  // MAVLink ile verileri alan fonksiyon
-  Stream<String> getDataStream() async* {
-    // Örnek veri akışı
-    await Future.delayed(Duration(seconds: 1));
-    yield 'İKA Verisi 1';
-    await Future.delayed(Duration(seconds: 1));
-    yield 'İKA Verisi 2';
+  void disconnect() {
+    _subscription?.cancel();
+    _socket?.close();
+  }
+
+  void sendCommand(String command) {
+    _socket?.write(command);
+  }
+
+  void dispose() {
+    _subscription?.cancel();
+    _socket?.destroy();
+    _dataStreamController.close();
   }
 }

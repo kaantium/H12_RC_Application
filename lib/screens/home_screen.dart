@@ -1,55 +1,71 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_vlc_player/flutter_vlc_player.dart';
-
-void main() {
-  runApp(MyApp());
-}
-
-class MyApp extends StatelessWidget {
-  @override
-  Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'Flutter Demo',
-      theme: ThemeData(
-        primarySwatch: Colors.blue,
-      ),
-      home:
-          HomeScreen(rtspCameraAddress: 'rtsp://192.168.144.25:8554/main.264'),
-    );
-  }
-}
+import '../services/mavlink_service.dart';
+import '../widgets/settings_button.dart';
+import 'settings_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   final String rtspCameraAddress;
 
-  const HomeScreen({Key? key, required this.rtspCameraAddress})
-      : super(key: key);
+  const HomeScreen({Key? key, required this.rtspCameraAddress}) : super(key: key);
 
   @override
-  _HomeScreenState createState() => _HomeScreenState();
+  HomeScreenState createState() => HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> {
-  late VlcPlayerController _controller;
+class HomeScreenState extends State<HomeScreen> {
+  VlcPlayerController? _vlcController;
+  MavlinkService? _mavlinkService;
+  String _situationData = "No data";
+  bool _isCameraConnected = true;
+  String _cameraErrorMessage = "";
 
   @override
   void initState() {
     super.initState();
-    _initVlcPlayer();
+  }
+
+  void initVlcPlayer() {
+    _vlcController = VlcPlayerController.network(
+      widget.rtspCameraAddress,
+      hwAcc: HwAcc.full,
+      autoPlay: true,
+      onInit: () {
+        _checkCameraConnection();
+        _vlcController?.addListener(_checkCameraConnection);
+      },
+    );
+  }
+
+  void _checkCameraConnection() {
+    if (_vlcController == null || !_vlcController!.value.isInitialized || _vlcController!.value.hasError) {
+      setState(() {
+        _isCameraConnected = false;
+        _cameraErrorMessage = "Failed to connect to RTSP server. Please check the connection.";
+      });
+    } else {
+      setState(() {
+        _isCameraConnected = true;
+        _cameraErrorMessage = "";
+      });
+    }
+  }
+
+  void startTcpCommunication() {
+    _mavlinkService = MavlinkService();
+    _mavlinkService!.dataStream.listen((data) {
+      setState(() {
+        _situationData = data;
+      });
+    });
   }
 
   @override
   void dispose() {
-    _controller.dispose();
+    _vlcController?.removeListener(_checkCameraConnection);
+    _vlcController?.dispose();
+    _mavlinkService?.dispose();
     super.dispose();
-  }
-
-  void _initVlcPlayer() {
-    try {
-      _controller = VlcPlayerController.network(widget.rtspCameraAddress);
-    } catch (e) {
-      _showErrorDialog('Video Yüklenirken Hata Oluştu');
-    }
   }
 
   void _showErrorDialog(String message) {
@@ -75,7 +91,52 @@ class _HomeScreenState extends State<HomeScreen> {
   void _openSettingsScreen() {
     Navigator.push(
       context,
-      MaterialPageRoute(builder: (context) => SettingsScreen()),
+      MaterialPageRoute(builder: (context) => SettingsScreen(situationData: _situationData)),
+    );
+  }
+
+  Widget _buildCameraView() {
+    if (_vlcController == null) {
+      return Center(
+        child: Text(
+          "Press the button to start the camera",
+          style: TextStyle(fontSize: 20),
+        ),
+      );
+    }
+
+    return Center(
+      child: _isCameraConnected
+          ? VlcPlayer(
+              controller: _vlcController!,
+              aspectRatio: 16 / 9,
+              placeholder: Center(child: CircularProgressIndicator()),
+            )
+          : Center(
+              child: Text(
+                _cameraErrorMessage,
+                style: TextStyle(fontSize: 20, color: Colors.red),
+              ),
+            ),
+    );
+  }
+
+  Widget _buildStatusRow(List<String> statuses) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.end,
+      children: statuses
+          .map((status) => Padding(
+                padding: const EdgeInsets.all(8.0),
+                child: Container(
+                  color: Colors.white,
+                  padding: EdgeInsets.all(8),
+                  child: Text(
+                    status,
+                    style: TextStyle(color: Colors.black),
+                  ),
+                ),
+              ))
+          .toList(),
     );
   }
 
@@ -84,175 +145,42 @@ class _HomeScreenState extends State<HomeScreen> {
     return Scaffold(
       body: Stack(
         children: [
-          Center(
-            child: VlcPlayer(
-              controller: _controller,
-              aspectRatio: 16 / 9,
-              placeholder: Center(child: CircularProgressIndicator()),
-            ),
-          ),
+          _buildCameraView(),
           Positioned(
             top: 16,
             left: 16,
-            child: IconButton(
-              icon: Icon(Icons.settings),
+            child: SettingsButton(
               onPressed: _openSettingsScreen,
+              rtspCameraAddress: widget.rtspCameraAddress,
             ),
           ),
           Positioned(
             top: 16,
             right: 16,
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.end,
-              children: [
-                Container(
-                  color: Colors.white,
-                  padding: EdgeInsets.all(8),
-                  child: Text(
-                    'U:88 D:89',
-                    style: TextStyle(color: Colors.black),
-                  ),
-                ),
-                SizedBox(width: 8),
-                Container(
-                  color: Colors.white,
-                  padding: EdgeInsets.all(8),
-                  child: Text(
-                    'BATT:%90',
-                    style: TextStyle(color: Colors.black),
-                  ),
-                ),
-                SizedBox(width: 8),
-                Container(
-                  color: Colors.white,
-                  padding: EdgeInsets.all(8),
-                  child: Text(
-                    '16.25',
-                    style: TextStyle(color: Colors.black),
-                  ),
-                ),
-                SizedBox(width: 8),
-                Container(
-                  color: Colors.white,
-                  padding: EdgeInsets.all(8),
-                  child: Text(
-                    '21.05.1799',
-                    style: TextStyle(color: Colors.black),
-                  ),
-                ),
-              ],
-            ),
+            child: _buildStatusRow(['U:88 D:89', 'BATT:%90', '16.25', '21.05.1799']),
           ),
           Positioned(
             bottom: 16,
             left: 16,
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.start,
-              children: [
-                Container(
-                  color: Colors.white,
-                  padding: EdgeInsets.all(8),
-                  child: Text(
-                    'Device Ready',
-                    style: TextStyle(color: Colors.black),
-                  ),
-                ),
-                SizedBox(width: 8),
-                Container(
-                  color: Colors.white,
-                  padding: EdgeInsets.all(8),
-                  child: Text(
-                    '148/200',
-                    style: TextStyle(color: Colors.black),
-                  ),
-                ),
-                SizedBox(width: 8),
-                Container(
-                  color: Colors.white,
-                  padding: EdgeInsets.all(8),
-                  child: Text(
-                    '12.7',
-                    style: TextStyle(color: Colors.black),
-                  ),
-                ),
-                SizedBox(width: 8),
-                Container(
-                  color: Colors.white,
-                  padding: EdgeInsets.all(8),
-                  child: Text(
-                    'x2',
-                    style: TextStyle(color: Colors.black),
-                  ),
-                ),
-                SizedBox(width: 8),
-                Container(
-                  color: Colors.white,
-                  padding: EdgeInsets.all(8),
-                  child: Text(
-                    '355',
-                    style: TextStyle(color: Colors.black),
-                  ),
-                ),
-              ],
-            ),
+            child: _buildStatusRow(['Device Ready', '148/200', '12.7', 'x2', '355']),
           ),
           Positioned(
             bottom: 16,
             right: 16,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.end,
-              mainAxisAlignment: MainAxisAlignment.end,
               children: [
-                Container(
-                  color: Colors.white,
-                  padding: EdgeInsets.all(8),
-                  child: Text(
-                    '342',
-                    style: TextStyle(color: Colors.black),
-                  ),
-                ),
+                _buildStatusRow(['342']),
                 SizedBox(height: 8),
-                Container(
-                  color: Colors.white,
-                  padding: EdgeInsets.all(8),
-                  child: Text(
-                    'x1',
-                    style: TextStyle(color: Colors.black),
-                  ),
-                ),
+                _buildStatusRow(['x1']),
                 SizedBox(height: 8),
-                Container(
-                  color: Colors.white,
-                  padding: EdgeInsets.all(8),
-                  child: Text(
-                    'HUMAN',
-                    style: TextStyle(color: Colors.black),
-                  ),
-                ),
+                _buildStatusRow(['HUMAN']),
                 SizedBox(height: 8),
-                Container(
-                  color: Colors.white,
-                  padding: EdgeInsets.all(8),
-                  child: Text(
-                    'CAR',
-                    style: TextStyle(color: Colors.black),
-                  ),
-                ),
+                _buildStatusRow(['CAR']),
               ],
             ),
           ),
         ],
-      ),
-    );
-  }
-}
-
-class SettingsScreen extends StatelessWidget {
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      body: Center(
-        child: Text('Ayarlar Ekranı'),
       ),
     );
   }

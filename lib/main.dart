@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:rc_bykaantium/screens/home_screen.dart'; // HomeScreen dosyasının doğru yolunu ekleyin
+import 'package:rc_bykaantium/screens/home_screen.dart';
 
 void main() {
   runApp(MyApp());
@@ -14,9 +14,8 @@ class MyApp extends StatelessWidget {
         primarySwatch: Colors.blue,
       ),
       home: HomeScreen(
-        key: UniqueKey(), // UniqueKey kullanarak key parametresini ekleyin
-        rtspCameraAddress:
-            'rtsp://192.168.144.25:8554/main.264', // Örnek bir RTSP kamera adresi
+        key: UniqueKey(), 
+        rtspCameraAddress: 'rtsp://192.168.144.25:8554/main.264',
       ),
     );
   }
