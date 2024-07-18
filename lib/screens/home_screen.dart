@@ -7,7 +7,8 @@ import 'settings_screen.dart';
 class HomeScreen extends StatefulWidget {
   final String rtspCameraAddress;
 
-  const HomeScreen({Key? key, required this.rtspCameraAddress}) : super(key: key);
+  const HomeScreen({Key? key, required this.rtspCameraAddress})
+      : super(key: key);
 
   @override
   HomeScreenState createState() => HomeScreenState();
@@ -19,6 +20,7 @@ class HomeScreenState extends State<HomeScreen> {
   String _situationData = "No data";
   bool _isCameraConnected = true;
   String _cameraErrorMessage = "";
+  bool _isTcpConnected = false;
 
   @override
   void initState() {
@@ -30,6 +32,7 @@ class HomeScreenState extends State<HomeScreen> {
       widget.rtspCameraAddress,
       hwAcc: HwAcc.full,
       autoPlay: true,
+      // ignore: deprecated_member_use
       onInit: () {
         _checkCameraConnection();
         _vlcController?.addListener(_checkCameraConnection);
@@ -38,10 +41,13 @@ class HomeScreenState extends State<HomeScreen> {
   }
 
   void _checkCameraConnection() {
-    if (_vlcController == null || !_vlcController!.value.isInitialized || _vlcController!.value.hasError) {
+    if (_vlcController == null ||
+        !_vlcController!.value.isInitialized ||
+        _vlcController!.value.hasError) {
       setState(() {
         _isCameraConnected = false;
-        _cameraErrorMessage = "Failed to connect to RTSP server. Please check the connection.";
+        _cameraErrorMessage =
+            "Failed to connect to RTSP server. Please check the connection.";
       });
     } else {
       setState(() {
@@ -53,10 +59,29 @@ class HomeScreenState extends State<HomeScreen> {
 
   void startTcpCommunication() {
     _mavlinkService = MavlinkService();
+    _mavlinkService!.connect('127.0.0.1', 5760);
     _mavlinkService!.dataStream.listen((data) {
       setState(() {
         _situationData = data;
       });
+    }, onDone: () {
+      setState(() {
+        _isTcpConnected = false;
+      });
+    }, onError: (error) {
+      setState(() {
+        _isTcpConnected = false;
+      });
+    });
+    setState(() {
+      _isTcpConnected = true;
+    });
+  }
+
+  void stopTcpCommunication() {
+    _mavlinkService?.disconnect();
+    setState(() {
+      _isTcpConnected = false;
     });
   }
 
@@ -91,7 +116,8 @@ class HomeScreenState extends State<HomeScreen> {
   void _openSettingsScreen() {
     Navigator.push(
       context,
-      MaterialPageRoute(builder: (context) => SettingsScreen(situationData: _situationData)),
+      MaterialPageRoute(
+          builder: (context) => SettingsScreen(situationData: _situationData)),
     );
   }
 
@@ -157,12 +183,14 @@ class HomeScreenState extends State<HomeScreen> {
           Positioned(
             top: 16,
             right: 16,
-            child: _buildStatusRow(['U:88 D:89', 'BATT:%90', '16.25', '21.05.1799']),
+            child: _buildStatusRow(
+                ['U:88 D:89', 'BATT:%90', '16.25', '21.05.1799']),
           ),
           Positioned(
             bottom: 16,
             left: 16,
-            child: _buildStatusRow(['Device Ready', '148/200', '12.7', 'x2', '355']),
+            child: _buildStatusRow(
+                ['Device Ready', '148/200', '12.7', 'x2', '355']),
           ),
           Positioned(
             bottom: 16,
